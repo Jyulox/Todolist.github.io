@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        .head {
+            font-family: "KaiTi";
+            font-size: 50px;
+            color: skyblue;
+        }
+        /* 主要封装 */
+        .main-wrapper {
+            margin-top: 100px; /*离页面顶部的边框距离*/
+            margin-left: 100px; /*离页面左边的边框距离*/
+        }
+
+        .btn-group {
+            display: inline-block; /*让按钮组能和其他元素并排*/
+            margin-left: 10px; /*让按钮与左侧保持距离*/
+        }
+
+        .icon-complete {
+            display: inline-block; /*行内块*/
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ddd;
+            border-radius: 50%; /*圆形效果*/
+            cursor: pointer; /*停留显示手型，提示可以点击*/
+        }
+
+        .icon-complete-active {
+            border-color: green;
+            text-align: center;
+        }
+
+        /*如果用图片的话，可以用background-image*/
+        /*完成后*/
+        .icon-complete-active:after {
+            content: '√';
+            color: green;
+        }
+
+        .todo-item {
+            margin-bottom: 10px;
+            padding: 5px;
+            display: flex;
+            align-items: center;
+        }
+
+        .todo-text {
+            font-size: 18px;
+            margin-left: 10px;
+        }
+
+        .item-complete .todo-text {
+            color: #999; /* 变灰色 */
+            text-decoration: line-through; /* 删除线 */
+        }
+
+        .filter-btn-group {
+            display: inline-block;
+            margin-left: 60px;
+        }
+
+        .row-search{
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        .filter-btn {
+            margin: 0 5px;
+            padding: 3px 8px;
+            cursor: pointer;/*提示可点击*/
+        }
+
+        .filter-btn.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .btn-clean {
+            margin-left: 20px;
+            padding: 3px 8px;
+            cursor: pointer;
+        }
+
+        .input-todo {
+            padding: 5px;
+            width: 300px;
+        }
+
+        .row-search input {
+            padding: 5px;
+            width: 200px;
+        }
+
+        .row-search button {
+            padding: 5px 10px;
+            margin-left: 5px;
+            cursor: pointer;
+        }
+
+        .btn-complete, .btn-delete, .btn-edit {
+            padding: 2px 6px;
+            margin-left: 5px;
+            cursor: pointer;
+        }
+
+        /* 编辑输入框样式 */
+        .edit-input {
+            padding: 2px 5px;
+            font-size: 18px;
+            margin-left: 10px;
+            width: 250px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+<div class="main-wrapper">
+    <div class="head">代办日志</div>
+    <input class="input-todo" type="text" placeholder="你想做点什么呢？" >
+    <div>
+        <span>还有 <span class="active-num"></span> 个未完成</span>
+        <div class="filter-btn-group">
+            筛选：
+            <!--  添加了data-的自定义属性 -->
+            <button class="filter-btn filter-btn-all active" data-completed="all" >全部</button>
+            <button class="filter-btn filter-btn-active" data-completed="0">未完成</button>
+            <button class="filter-btn filter-btn-completed" data-completed="1" >已完成</button>
+            <button class="btn-clean">清空</button>
+        </div>
+    </div>
+    <div class="row-search">
+        <input type="text" class="search-input" placeholder="请输入要搜索的词">
+        <button class="search-btn">搜索</button>
+    </div>
+    <ul class="todo-list"></ul>
+</div>
+<script>
+    // 从localStorage加载数据，如果没有则使用空数组
+    let list = JSON.parse(localStorage.getItem('todoList')) || [];
+    let currentFilter = 'all'; // 记录当前筛选状态
+    let searchKeyword = ''; // 记录当前搜索关键词
+
+    // 初始化渲染
+    render();
+
+    // 为添加任务输入框添加键盘事件
+    document.querySelector('.input-todo').addEventListener('keyup', function (e) {
+        // trim 去首尾空格
+        const name = e.target.value.trim(); /*获取输入框中的内容*/
+        /*过滤掉无效的输入，比如说输入空格*/
+        if (!name) {
+            return;
+        }
+        if (e.key === 'Enter') {
+            const item = {
+                id: Date.now(), // 添加唯一ID，避免索引问题
+                name: name,
+                completed: false,
+            };
+            list.push(item); /*放队尾；unshift()是放队头*/
+            saveToLocalStorage(); // 保存到本地存储
+            render();
+            e.target.value = '';  /*按下回车键后清空框内的内容*/
+        }
+    });
+
+    // 为筛选按钮添加点击事件
+    document.querySelectorAll('.filter-btn').forEach((el) => {
+        el.addEventListener('click', function() {
+            // 更新按钮样式
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            this.classList.add('active'); /*给当前点击的按钮添加active属性*/
+            
+            currentFilter = this.dataset.completed;
+            render();
+        });
+    });
+
+    // 清空按钮事件
+    document.querySelector('.btn-clean').addEventListener('click', () => {
+        if (confirm('确定要清空所有任务吗？')) {
+            list = [];
+            saveToLocalStorage(); // 保存到本地存储
+            render();
+        }
+    });
+
+    // 搜索功能实现
+    const searchInput = document.querySelector('.search-input');
+    const searchBtn = document.querySelector('.search-btn');
+
+    // 搜索按钮点击事件
+    searchBtn.addEventListener('click', performSearch);
+    
+    // 搜索框回车事件
+    searchInput.addEventListener('keyup', function(e) {
+        if (e.key === 'Enter') {
+            performSearch();
+        }
+    });
+
+    // 新增：监听搜索框输入变化，实现清空自动显示全部
+    searchInput.addEventListener('input', function() {
+        // 当搜索框内容为空时，重置搜索状态并显示所有内容
+        if (!this.value.trim()) {
+            searchKeyword = ''; // 清空搜索关键词
+            render(); // 重新渲染列表
+        }
+    });
+
+    // 执行搜索的函数
+    function performSearch() {
+        searchKeyword = searchInput.value.trim().toLowerCase();
+        render();
+    }
+
+    // 删除任务
+    function deleteItem(id) {
+        list = list.filter(item => item.id !== id); /*list.filter返回的是新数组*/
+        saveToLocalStorage(); // 保存到本地存储
+        render();
+    }
+
+    // 切换任务完成状态
+    function onClickCompleteBtn(id) {
+        const item = list.find(item => item.id === id);
+        if (item) {
+            item.completed = !item.completed;
+            saveToLocalStorage(); // 保存到本地存储
+            render();
+        }
+    }
+
+    // 标记任务为完成（按钮功能）
+    function markAsComplete(id) {
+        const item = list.find(item => item.id === id); /*找到传入id一致的项目*/
+        if (item && !item.completed) {
+            item.completed = true;
+            saveToLocalStorage(); // 保存到本地存储
+            render();
+        }
+    }
+
+    // 进入编辑模式
+    function editItem(id) {
+        // 获取当前任务元素
+        const todoItem = document.querySelector(`li[data-id="${id}"]`);
+        if (!todoItem) return;
+
+        // 获取对应的任务数据
+        const item = list.find(item => item.id === id);
+        if (!item) return;
+
+        // 将文本显示替换为输入框
+        const textSpan = todoItem.querySelector('.todo-text');
+        textSpan.outerHTML = `<input type="text" class="edit-input" value="${item.name}">`;
+
+        // 获取编辑输入框并自动聚焦
+        const editInput = todoItem.querySelector('.edit-input');
+        editInput.focus();
+        editInput.selectionStart = editInput.value.length; 
+
+        // 替换"修改"按钮为"保存"按钮
+        const btnGroup = todoItem.querySelector('.btn-group');
+        const editBtn = btnGroup.querySelector('.btn-edit');
+        editBtn.outerHTML = `<button onclick="saveEdit(${id})" class="btn-complete">保存</button>`;
+
+        // 支持按Enter键保存修改
+        editInput.addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') {
+                saveEdit(id);
+            }
+        });
+    }
+
+    // 保存修改内容
+    function saveEdit(id) {
+        // 获取输入框的值
+        const editInput = document.querySelector(`li[data-id="${id}"] .edit-input`);
+        if (!editInput) return;
+
+        const newName = editInput.value.trim();
+        if (!newName) {
+            alert('任务名称不能为空');
+            return;
+        }
+
+        // 更新任务数据
+        const item = list.find(item => item.id === id);
+        if (item) {
+            item.name = newName;
+            saveToLocalStorage(); // 保存到本地存储
+            render(); // 重新渲染以更新视图
+        }
+    }
+
+    // 渲染函数
+    function render() {
+        updateActiveNum();
+        renderTodoList();
+    }
+
+    // 更新未完成任务数量
+    function updateActiveNum() {
+        const num = list.filter(item => !item.completed).length;
+        document.querySelector('.active-num').innerHTML = num;
+    }
+
+    // 渲染任务列表
+    function renderTodoList() {
+        // 先应用筛选
+        let filteredList = [];
+        if (currentFilter === 'all') {
+            filteredList = [...list];
+        } else {
+            const isCompleted = currentFilter === '1';
+            filteredList = list.filter(item => item.completed === isCompleted);
+        }
+
+        // 再应用搜索
+        if (searchKeyword) {
+            filteredList = filteredList.filter(item => 
+                item.name.toLowerCase().includes(searchKeyword)
+            );
+        }
+      
+        // 生成HTML
+        let html = '';
+        filteredList.forEach((item) => {
+            const itemClass = item.completed ? 'todo-item item-complete' : 'todo-item';
+            const spanClass = item.completed ? 'icon-complete icon-complete-active' : 'icon-complete';
+            html += `<li class="${itemClass}" data-id="${item.id}">
+                <span onclick="onClickCompleteBtn(${item.id})" class="${spanClass}"></span>
+                <span class="todo-text">${item.name}</span>
+                <div class="btn-group">
+                    <button onclick="markAsComplete(${item.id})" class="btn-complete" ${item.completed ? 'disabled' : ''}>
+                        ${item.completed ? '已完成' : '完成'}
+                    </button>
+                    <button onclick="editItem(${item.id})" class="btn-edit">修改</button>
+                    <button onclick="deleteItem(${item.id})" class="btn-delete">删除</button>
+                </div>
+            </li>`;
+        });
+
+        // 没有数据时显示提示
+        if (filteredList.length === 0) {
+            html = '<li style="color: #999;">没有找到匹配的任务</li>';
+        }
+
+        document.querySelector('.todo-list').innerHTML = html;
+    }
+
+    // 保存数据到localStorage
+    function saveToLocalStorage() {
+        localStorage.setItem('todoList', JSON.stringify(list));
+    }
+</script>
+</body>
+</html>
